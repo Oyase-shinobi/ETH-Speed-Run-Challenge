@@ -9,8 +9,8 @@ contract Staker {
 
   bool executed;
 	bool openWithdraw;
-  uint256 public deadline = block.timestamp + 1 days;
-	uint256 public constant THRESHOLD = 1 ether;
+  uint256 public deadline = block.timestamp + 30 seconds;
+	uint256 public constant threshold = 1 ether;
 
   mapping(address => uint) public balances;
 
@@ -26,6 +26,12 @@ contract Staker {
 
 	event Stake(address, uint256);
 	event StakeWithdrawn(address);
+  event Execute(uint256);
+
+  modifier NotCompleted() {
+    require(!exampleExternalContract.completed(), "Operation not allowed, contract already completed");
+    _;
+  }
 
 	constructor(address exampleExternalContractAddress) {
 		exampleExternalContract = ExampleExternalContract(
@@ -47,24 +53,24 @@ contract Staker {
 
 	// After some `deadline` allow anyone to call an `execute()` function
 	// If the deadline has passed and the threshold is met, it should call `exampleExternalContract.complete{value: address(this).balance}()`
-	function execute() external {
+	function execute() external NotCompleted{
 		if (deadline > block.timestamp) revert CanNotExecute();
 		if (executed) revert ExecutedAlready();
 
-		executed = true;
-
-		if (address(this).balance >= THRESHOLD) {
-			exampleExternalContract.complete{ value: address(this).balance }();
-		}
+    if (address(this).balance >= threshold) {
+      executed = true; // Mark as executed
+      exampleExternalContract.complete{value: address(this).balance}();
+      emit Execute(address(this).balance);
+    }
 	}
 
 	// If the `threshold` was not met, allow everyone to call a `withdraw()` function to withdraw their balance
-	function withdraw() external {
+	function withdraw() external NotCompleted {
 		if (msg.sender == address(0)) revert AddrZeroDetected();
-		if (address(this).balance >= THRESHOLD) revert ThresholdMet();
+		if (address(this).balance >= threshold) revert ThresholdMet();
 		if (block.timestamp < deadline) revert StakingOngoing();
-		if (balances[msg.sender] <= 0) revert NoStakingYet();
-
+		if (balances[msg.sender] == 0) revert NoStakingYet();
+ 
     uint _amtToWithdraw = balances[msg.sender];
 		balances[msg.sender] = 0;
 
