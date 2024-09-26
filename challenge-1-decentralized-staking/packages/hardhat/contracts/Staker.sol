@@ -18,11 +18,11 @@ contract Staker {
 	error AddrZeroDetected();
 	error CanNotExecute();
 	error ThresholdMet();
-	error ThresholdNotMet();
 	error NoStakingYet();
 	error StakingDeadlineHasPasssed();
 	error ExecutedAlready();
 	error StakingOngoing();
+  error StakingEnded();
 
 	event Stake(address, uint256);
 	event StakeWithdrawn(address);
@@ -44,6 +44,7 @@ contract Staker {
 	function stake() public payable {
 		if (msg.sender == address(0)) revert AddrZeroDetected();
 		if (msg.value <= 0) revert StakeMustNotBeZero();
+    if (block.timestamp > deadline) revert StakingEnded();
 		if (executed) revert StakingDeadlineHasPasssed();
 
 		balances[msg.sender] += msg.value;
@@ -58,7 +59,7 @@ contract Staker {
 		if (executed) revert ExecutedAlready();
 
     if (address(this).balance >= threshold) {
-      executed = true; // Mark as executed
+      executed = true;
       exampleExternalContract.complete{value: address(this).balance}();
       emit Execute(address(this).balance);
     }
