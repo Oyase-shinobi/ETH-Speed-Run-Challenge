@@ -22,6 +22,9 @@ contract Streamer is Ownable {
       - updates the balances mapping with the eth received in the function call
       - emits an Opened event
     */
+    require(balances[msg.sender] == 0, "channel already exists");
+    balances[msg.sender] = msg.value;
+    emit Opened(msg.sender, msg.value);
   }
 
   function timeLeft(address channel) public view returns (uint256) {
@@ -59,6 +62,22 @@ contract Streamer is Ownable {
           - adjust the channel balance, and pay the Guru(Contract owner). Get the owner address with the `owner()` function.
           - emit the Withdrawn event
     */
+    address signer = ecrecover(
+      prefixedHashed,
+      voucher.sig.v,
+      voucher.sig.r,
+      voucher.sig.s
+    );
+    
+    require(balances[signer] > voucher.updatedBalance, "insufficient channel balance");
+    
+    uint256 payment = balances[signer] - voucher.updatedBalance;
+    balances[signer] = voucher.updatedBalance;
+    
+    (bool success, ) = owner().call{value: payment}("");
+    require(success, "payment failed");
+    
+    emit Withdrawn(signer, payment);
   }
 
   /*
@@ -69,6 +88,11 @@ contract Streamer is Ownable {
     - updates canCloseAt[msg.sender] to some future time
     - emits a Challenged event
   */
+  function challengeChannel() public {
+    require(balances[msg.sender] > 0, "no channel exists");
+    canCloseAt[msg.sender] = block.timestamp + 30 seconds;
+    emit Challenged(msg.sender);
+  }
 
   /*
     Checkpoint 5b: Close the channel
@@ -79,6 +103,19 @@ contract Streamer is Ownable {
     - sends the channel's remaining funds to msg.sender, and sets the balance to 0
     - emits the Closed event
   */
+  function defundChannel() public {
+    require(canCloseAt[msg.sender] != 0, "channel not challenged");
+    require(block.timestamp >= canCloseAt[msg.sender], "challenge period not over");
+    
+    uint256 amount = balances[msg.sender];
+    balances[msg.sender] = 0;
+    canCloseAt[msg.sender] = 0;
+    
+    (bool success, ) = msg.sender.call{value: amount}("");
+    require(success, "refund failed");
+    
+    emit Closed(msg.sender);
+  }
 
   struct Voucher {
     uint256 updatedBalance;
