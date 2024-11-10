@@ -132,13 +132,13 @@ export const Guru: FC<GuruProps> = ({ challenged, closed, opened, writable }) =>
             </div>
 
             {/* Checkpoint 4: */}
-            {/* <CashOutVoucherButton
+            <CashOutVoucherButton
               key={clientAddress}
               clientAddress={clientAddress}
               challenged={challenged}
               closed={closed}
               voucher={vouchers[clientAddress]}
-            /> */}
+            />
           </div>
         ))}
       </div>

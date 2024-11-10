@@ -11,7 +11,12 @@ type CashOutVoucherButtonProps = {
   voucher: Voucher;
 };
 
-export const CashOutVoucherButton = ({ clientAddress, challenged, closed, voucher }: CashOutVoucherButtonProps) => {
+export const CashOutVoucherButton = ({
+  clientAddress,
+  challenged,
+  closed,
+  voucher
+}: CashOutVoucherButtonProps) => {
   const { writeContractAsync } = useScaffoldWriteContract("Streamer");
 
   const { data: timeLeft } = useScaffoldReadContract({
@@ -21,37 +26,44 @@ export const CashOutVoucherButton = ({ clientAddress, challenged, closed, vouche
     watch: true,
   });
 
-  const isButtonDisabled =
-    !voucher || closed.includes(clientAddress) || (challenged.includes(clientAddress) && !timeLeft);
+  const isClientChallenged = challenged.includes(clientAddress);
+  const isButtonDisabled = !voucher || 
+    closed.includes(clientAddress) || 
+    (isClientChallenged && !timeLeft);
+
+  const handleCashOut = async () => {
+    try {
+      await writeContractAsync({
+        functionName: "withdrawEarnings",
+        args: [{
+          ...voucher,
+          sig: voucher?.signature ? Signature.from(voucher.signature) as any : undefined
+        }],
+      });
+    } catch (err) {
+      console.error("Error calling withdrawEarnings function");
+    }
+  };
 
   return (
     <div className="w-full flex flex-col items-center">
       <div className="h-8 pt-2">
-        {challenged.includes(clientAddress) &&
-          (!!timeLeft ? (
+        {isClientChallenged && (
+          timeLeft ? (
             <>
-              <span>Time left:</span> {timeLeft && humanizeDuration(Number(timeLeft) * 1000)}
+              <span>Time left:</span> {humanizeDuration(Number(timeLeft) * 1000)}
             </>
           ) : (
             <>Challenged. Cash out timed out</>
-          ))}
+          )
+        )}
       </div>
       <button
-        className={`mt-3 btn btn-primary${challenged.includes(clientAddress) ? " btn-error" : ""}${
-          isButtonDisabled ? " btn-disabled" : ""
-        }`}
+        className={`mt-3 btn btn-primary${
+          isClientChallenged ? " btn-error" : ""
+        }${isButtonDisabled ? " btn-disabled" : ""}`}
         disabled={isButtonDisabled}
-        onClick={async () => {
-          try {
-            await writeContractAsync({
-              functionName: "withdrawEarnings",
-              // TODO: change when viem will implement splitSignature
-              args: [{ ...voucher, sig: voucher?.signature ? (Signature.from(voucher.signature) as any) : undefined }],
-            });
-          } catch (err) {
-            console.error("Error calling withdrawEarnings function");
-          }
-        }}
+        onClick={handleCashOut}
       >
         Cash out latest voucher
       </button>

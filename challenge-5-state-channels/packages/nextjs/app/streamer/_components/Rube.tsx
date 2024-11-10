@@ -14,6 +14,7 @@ type RubeProps = {
 };
 
 export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
+  // State and refs
   const userChannel = useRef<BroadcastChannel>();
   const { address: userAddress } = useAccount();
   const [autoPay, setAutoPay] = useState(true);
@@ -21,6 +22,7 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync: writeStreamerContractAsync } = useScaffoldWriteContract("Streamer");
 
+  // Contract read hook for timeLeft
   const { data: timeLeft } = useScaffoldReadContract({
     contractName: "Streamer",
     functionName: "timeLeft",
@@ -28,45 +30,27 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
     watch: true,
   });
 
+  // Setup broadcast channel when user connects
   useEffect(() => {
     if (userAddress) {
       userChannel.current = new BroadcastChannel(userAddress);
     }
   }, [userAddress]);
 
-  /**
-   * reimburseService prepares, signs, and delivers a voucher that pays for the received wisdom
-   * to the service provider
-   */
   async function reimburseService(wisdom: string) {
     const initialBalance = parseEther(STREAM_ETH_VALUE);
     const costPerCharacter = parseEther(ETH_PER_CHARACTER);
     const duePayment = costPerCharacter * BigInt(wisdom.length);
 
     let updatedBalance = initialBalance - duePayment;
-
     if (updatedBalance < 0n) {
       updatedBalance = 0n;
     }
 
+    // Create and sign the payment voucher
     const packed = encodePacked(["uint256"], [updatedBalance]);
     const hashed = keccak256(packed);
     const arrayified = toBytes(hashed);
-
-    // Why not just sign the updatedBalance string directly?
-    //
-    // Two considerations:
-    // 1) This signature is going to verified both off-chain (by the service provider)
-    //    and on-chain (by the Streamer contract). These are distinct runtime environments, so
-    //    care needs to be taken that signatures are applied to specific data encodings.
-    //
-    //    the toBytes call above encodes this data in an EVM compatible way
-    //
-    //    see: https://blog.ricmoo.com/verifying-messages-in-solidity-50a94f82b2ca for some
-    //         more on EVM verification of messages signed off-chain
-    // 2) Because of (1), it's useful to apply signatures to the hash of any given message
-    //    rather than to arbitrary messages themselves. This way the encoding strategy for
-    //    the fixed-length hash can be reused for any message format.
 
     let signature;
     try {
@@ -85,15 +69,8 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
     }
   }
 
+  // Setup message handler for incoming wisdom
   if (userChannel.current) {
-    /**
-     * Handle incoming service data from the service provider.
-     *
-     * If autoPay is turned on, instantly recalculate due payment
-     * and return to the service provider.
-     *
-     * @param {MessageEvent<string>} e
-     */
     userChannel.current.onmessage = e => {
       if (typeof e.data != "string") {
         console.warn(`received unexpected channel data: ${JSON.stringify(e.data)}`);
@@ -114,6 +91,7 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
 
       {userAddress && writable.includes(userAddress) ? (
         <div className="w-full flex flex-col items-center">
+          {/* Autopay toggle */}
           <span className="mt-6 text-lg font-semibold">Autopay</span>
           <div className="flex items-center mt-2 gap-2">
             <span>Off</span>
@@ -124,7 +102,6 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
               onChange={e => {
                 const updatedAutoPay = e.target.checked;
                 setAutoPay(updatedAutoPay);
-
                 if (updatedAutoPay) {
                   reimburseService(receivedWisdom);
                 }
@@ -133,37 +110,35 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
             <span>On</span>
           </div>
 
+          {/* Received wisdom display */}
           <div className="text-center w-full mt-4">
             <p className="text-xl font-semibold">Received Wisdom</p>
             <p className="mb-3 text-lg min-h-[1.75rem] border-2 border-primary rounded">{receivedWisdom}</p>
           </div>
 
-          {/* Checkpoint 5: challenge & closure */}
-          {/* <div className="flex flex-col items-center pb-6">
+          {/* Challenge and close buttons */}
+          <div className="flex flex-col items-center pb-6">
             <button
               disabled={challenged.includes(userAddress)}
               className="btn btn-primary"
               onClick={async () => {
-                // disable the production of further voucher signatures
                 setAutoPay(false);
-
                 try {
                   await writeStreamerContractAsync({ functionName: "challengeChannel" });
+                  
+                  // Setup mining interval for UI updates
+                  try {
+                    createTestClient({
+                      chain: hardhat,
+                      mode: "hardhat",
+                      transport: http(),
+                    })?.setIntervalMining({
+                      interval: 5,
+                    });
+                  } catch (e) {}
                 } catch (err) {
                   console.error("Error calling challengeChannel function");
                 }
-
-                try {
-                  // ensure a 'ticking clock' for the UI without having
-                  // to send new transactions & mine new blocks
-                  createTestClient({
-                    chain: hardhat,
-                    mode: "hardhat",
-                    transport: http(),
-                  })?.setIntervalMining({
-                    interval: 5,
-                  });
-                } catch (e) {}
               }}
             >
               Challenge this channel
@@ -176,6 +151,7 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
                 </>
               )}
             </div>
+
             <button
               className="btn btn-primary"
               disabled={!challenged.includes(userAddress) || !!timeLeft}
@@ -189,7 +165,7 @@ export const Rube: FC<RubeProps> = ({ challenged, closed, writable }) => {
             >
               Close and withdraw funds
             </button>
-          </div> */}
+          </div>
         </div>
       ) : userAddress && closed.includes(userAddress) ? (
         <div className="text-lg">
